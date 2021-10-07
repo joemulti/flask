@@ -1,0 +1,54 @@
+stages:
+  - build_dev
+  - unittest_dev
+  - style_dev
+  - build_int
+  - test_int
+
+build:
+  stage: build_dev
+  script: cd $CI_PROJECT_DIR/app && docker build -t app .
+
+unittests:
+  stage: unittest_dev
+  script: cd $CI_PROJECT_DIR/app/tests && /bin/bash run_tests.sh
+
+style:
+  stage: style_dev
+  before_script:
+    - mkdir -p public/badges public/lint
+    - echo undefined > public/badges/$CI_JOB_NAME.score
+  script:
+    - cd $CI_PROJECT_DIR/code && /bin/bash run_style.sh
+    - sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' $CI_PROJECT_DIR/code/pylint.txt > $CI_PROJECT_DIR/public/badges/$CI_JOB_NAME.score
+  after_script:
+    - /usr/local/bin/anybadge --overwrite --label $CI_JOB_NAME --value=$(cat $CI_PROJECT_DIR/public/badges/$CI_JOB_NAME.score) --file=$CI_PROJECT_DIR/public/badges/$CI_JOB_NAME.svg 4=red 6=orange 8=yellow 10=green
+    - |
+      echo "Your score is: $(cat $CI_PROJECT_DIR/public/badges/$CI_JOB_NAME.score)"
+  artifacts:
+    paths:
+      - public
+    reports:
+      codequality: $CI_PROJECT_DIR/code/codeclimate.json
+    when: always
+
+build_app:
+  stage: build_int
+  script:
+    - cd $CI_PROJECT_DIR/app
+    - docker login http://registry-cido.experteach.demo:1234 -u reguser -p 1234QWer
+    - docker build -t registry-cido.experteach.demo:1234/root/application/app .
+    - docker push registry-cido.experteach.demo:1234/root/application/app
+
+build_lb:
+  stage: build_int
+  script:
+    - cd $CI_PROJECT_DIR/lb
+    - docker login http://registry-cido.experteach.demo:1234 -u reguser -p 1234QWer
+    - docker build -t registry-cido.experteach.demo:1234/root/application/lb .
+    - docker push registry-cido.experteach.demo:1234/root/application/lb
+
+system_test:
+  stage: test_int
+  script: cd $CI_PROJECT_DIR/system_tests && /bin/bash run_system_tests.sh
+
